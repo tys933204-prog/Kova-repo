@@ -1,13 +1,7 @@
-// ====== KEY LOADING ======
-const kovaApiKey = localStorage.getItem("kova_api");
-const shopifyToken = localStorage.getItem("shopify_token");
-
-// Ask for API key if missing
-if (!kovaApiKey) {
-    const key = prompt("Enter your OpenAI API key to activate Kova:");
-    if (key) localStorage.setItem("kova_api", key);
-}
-
+// ========================================
+// KOVA MAIN.JS (CLEAN VERSION)
+// No API key prompt, server-based API calls
+// ========================================
 
 // ====== FALLBACK PRODUCTS ======
 const fallbackProducts = [
@@ -21,14 +15,10 @@ const fallbackProducts = [
 
 let shopifyProducts = [];
 
-
-// ====== FETCH REAL SHOPIFY PRODUCTS ======
+// ====== LOAD SHOPIFY PRODUCTS (OPTIONAL) ======
 async function loadShopifyProducts() {
     try {
-        const res = await fetch("/products.json", {
-            headers: { "X-Shopify-Storefront-Access-Token": shopifyToken }
-        });
-
+        const res = await fetch("/products.json");
         const data = await res.json();
 
         shopifyProducts = data.products.map((p) => ({
@@ -40,16 +30,12 @@ async function loadShopifyProducts() {
         }));
 
         console.log("Shopify products loaded:", shopifyProducts);
-
     } catch (err) {
         console.warn("Shopify fetch failed — using fallback products.");
     }
 }
 
-
-
-// ====== UTILITIES ======
-
+// ====== PRODUCT SELECTION ======
 function getAvailableProducts() {
     return shopifyProducts.length > 0 ? shopifyProducts : fallbackProducts;
 }
@@ -62,15 +48,11 @@ function findMatchingProducts(message) {
     return getAvailableProducts().filter(item => item.style === match);
 }
 
-
-
-// ====== CHAT SESSION MEMORY ======
+// ====== CHAT MEMORY ======
 let chatHistory = JSON.parse(sessionStorage.getItem("kova_chat")) || [];
 let sessionConversation = [...chatHistory];
 
-
-
-// ====== UI HOOKS ======
+// ====== UI SETUP ======
 document.addEventListener("DOMContentLoaded", () => {
 
     loadShopifyProducts();
@@ -83,22 +65,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatContainer = document.getElementById("chatContainer");
     const productGrid = document.getElementById("productGrid");
 
-
-
     // ====== START BUTTON ======
     startBtn.addEventListener("click", () => {
         chatContainer.style.display = "block";
         startBtn.style.display = "none";
 
-        // Kova introduces herself AFTER the chat opens
         setTimeout(() => {
             addMessage("Hey — I’m Kova. If you're shopping for something specific or just exploring ideas, tell me your style, vibe, or upcoming event.", "kova");
         }, 400);
     });
 
-
-
-// ====== MESSAGE HANDLING ======
+    // ====== ADD MESSAGE TO CHAT ======
     function addMessage(text, sender) {
         const el = document.createElement("div");
         el.classList.add("message", sender);
@@ -112,8 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-
-
+    // ====== DISPLAY PRODUCTS ======
     function displayProducts(products) {
         productGrid.innerHTML = "";
 
@@ -135,101 +111,59 @@ document.addEventListener("DOMContentLoaded", () => {
         productGrid.style.display = "block";
     }
 
+    // ====== SEND TO SERVER (NEW WAY) ======
+    async function sendToKovaServer(messagesArray) {
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messages: messagesArray })
+            });
 
+            const data = await res.json();
+            return data.reply || "Something glitched — say that again.";
 
-// ====== OPENAI REQUEST ======
-async function sendToOpenAI(messagesArray) {
-
-    const systemPrompt = `
-You are Kova — an AI fashion stylist. Speak naturally like a real stylist, not a chatbot.
-
-Tone:
-Confident, warm, short when clear, longer only when helpful.
-No emojis. No robotic phrasing.
-
-Rules:
-- Recommend 2–4 items at a time.
-- Ask one clarifying question if needed.
-- If the user changes direction or asks random questions, adapt smoothly.
-- Never mention body type, weight, sizing judgment.
-- If user asks, offer boutique-specific fit or size guidance.
-
-Memory:
-If user asks: "remember that," respond: "I can save your style for this boutique — want me to?"
-Never assume consent.
-
-Ending responses:
-Neutral choices like:
-"Want more options, a different vibe, or should I pull the last set again?"
-`;
-
-    const apiMessages = [
-        { role: "system", content: systemPrompt },
-        ...messagesArray.map(m => ({
-            role: m.sender === "user" ? "user" : "assistant",
-            content: m.text
-        }))
-    ];
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("kova_api")}`
-        },
-        body: JSON.stringify({
-            model: "gpt-4.1-mini",
-            messages: apiMessages
-        })
-    });
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "Something glitched — say that again.";
-}
-
-
-
-// ====== BOT REPLY ======
-async function kovaReply(userMessage) {
-    loading.style.display = "block";
-
-    const matches = findMatchingProducts(userMessage);
-    if (matches.length > 0) {
-        displayProducts(matches);
+        } catch (err) {
+            return "Connection issue — try again.";
+        }
     }
 
-    sessionConversation.push({ sender: "user", text: userMessage });
+    // ====== HANDLE BOT REPLY ======
+    async function kovaReply(userMessage) {
+        loading.style.display = "block";
 
-    const reply = await sendToOpenAI(sessionConversation);
+        const matches = findMatchingProducts(userMessage);
+        if (matches.length > 0) {
+            displayProducts(matches);
+        }
 
-    loading.style.display = "none";
-    addMessage(reply, "kova");
+        sessionConversation.push({ sender: "user", text: userMessage });
 
-    sessionConversation.push({ sender: "kova", text: reply });
-}
+        // Typing delay (realistic)
+        await new Promise(res => setTimeout(res, 600));
 
+        const reply = await sendToKovaServer(sessionConversation);
 
+        loading.style.display = "none";
+        addMessage(reply, "kova");
 
-// ====== SEND BUTTON ======
-sendBtn.addEventListener("click", () => {
-    const msg = inputField.value.trim();
-    if (!msg) return;
-    addMessage(msg, "user");
-    inputField.value = "";
-    kovaReply(msg);
+        sessionConversation.push({ sender: "kova", text: reply });
+    }
+
+    // ====== SEND BUTTON ======
+    sendBtn.addEventListener("click", () => {
+        const msg = inputField.value.trim();
+        if (!msg) return;
+        addMessage(msg, "user");
+        inputField.value = "";
+        kovaReply(msg);
+    });
+
+    // ====== ENTER KEY ======
+    inputField.addEventListener("keypress", (event) => {
+        if (event.key === "Enter") sendBtn.click();
+    });
+
+    // ====== RESTORE OLD CHAT ======
+    chatHistory.forEach(msg => addMessage(msg.text, msg.sender));
 });
-
-
-
-// ====== ENTER KEY TO SEND ======
-inputField.addEventListener("keypress", (event) => {
-    if (event.key === "Enter") sendBtn.click();
-});
-
-
-
-// ====== RESTORE PREVIOUS MESSAGES ======
-chatHistory.forEach(msg => addMessage(msg.text, msg.sender));
-
-});
-
