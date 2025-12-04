@@ -1,1 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+
+  <!-- Mobile + Shopify embed compatibility -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Kova — AI Fashion Assistant</title>
+
+  <!-- External stylesheet -->
+  <link rel="stylesheet" href="kova/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <h1 id="kovaTitle">KOVA</h1>
+  <p id="subtitle">AI Fashion Stylist</p>
+
+  <!-- Start Button -->
+  <button id="startChat" class="kova-btn">Start Chat</button>
+
+  <!-- Chat Container -->
+  <div id="chatContainer" style="display:none;">
+      <div id="messages"></div>
+
+      <div id="loading">Kova is typing...</div>
+
+      <input id="userInput" type="text" placeholder="Type here..." />
+      <button id="sendBtn" class="kova-btn-send">Send</button>
+  </div>
+
+  <!-- Product Results -->
+  <div id="productGrid"></div>
+
+  <!-- API Key Setup -->
+  <script>
+      if (!localStorage.getItem("kova_api")) {
+          const key = prompt("Enter your OpenAI API key to activate Kova:");
+          if (key) {
+              localStorage.setItem("kova_api", key);
+              alert("Key saved. Refresh the page to begin.");
+          }
+      }
+  </script>
+
+  <!-- Main Logic -->
+  <script src="kova/main.js"></script>
+
+</body>
+</html>
 
