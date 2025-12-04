@@ -1,34 +1,81 @@
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-app.post("/api", async (req, res) => {
-  const { message, key } = req.body;
+// Load your OpenAI API key from environment variables
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+
+// Safety check
+if (!OPENAI_KEY) {
+  console.error("❌ ERROR: OPENAI_API_KEY is missing in environment variables.");
+}
+
+app.post("/api/chat", async (req, res) => {
   try {
+    const { messages } = req.body;
+
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Invalid message format." });
+    }
+
+    // Convert your messages into OpenAI format
+    const formattedMessages = [
+      {
+        role: "system",
+        content: `
+You are Kova — an AI fashion stylist. Speak naturally like a real stylist.
+
+Tone:
+Confident, warm, short when clear, longer when helpful.
+No emojis.
+
+Rules:
+- Recommend 2–4 items at a time.
+- Ask one clarifying question when needed.
+- If user asks random stuff, adapt naturally.
+- Never comment on body size or weight.
+- Offer fit guidance only when asked.
+        `
+      },
+
+      // Convert conversation history to OpenAI roles
+      ...messages.map(m => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text
+      }))
+    ];
+
+    // Send request to OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
+        "Authorization": `Bearer ${OPENAI_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        messages: [
-          { role: "system", content: "You are Kova, an AI fashion assistant. Speak with confidence, style, and warmth." },
-          { role: "user", content: message }
-        ]
+        messages: formattedMessages
       })
     });
+
     const data = await response.json();
-    res.json(data.choices?.[0]?.message?.content || "⚠️ Something went wrong.");
+
+    const reply =
+      data.choices?.[0]?.message?.content ||
+      "Something glitched — say that again.";
+
+    res.json({ reply });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: "Server error." });
   }
 });
 
-app.listen(3000, () => console.log("Server running on http://localhost:3000"));
-
+// Support Render / Vercel dyno ports
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Kova backend running on port ${PORT}`));
